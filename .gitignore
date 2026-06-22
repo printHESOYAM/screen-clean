@@ -25,3 +25,7 @@ Thumbs.db
 
 # PyInstaller
 *.manifest
+
+# Generated installer assets (run installer/generate_assets.py)
+installer/assets/*.bmp
+installer/assets/*.ico

@@ -32,8 +32,19 @@ jobs:
           SCREENCLEAN_TELEMETRY_KEY: ${{ secrets.SCREENCLEAN_TELEMETRY_KEY }}
         run: pyinstaller DesktopCleaner.spec
 
-      - name: Upload release asset
+      - name: Generate installer assets
+        run: python installer/generate_assets.py
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\ScreenClean.iss'
+
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ScreenClean.exe
+          files: |
+            dist/ScreenClean.exe
+            dist/ScreenClean-Setup.exe
           generate_release_notes: true
