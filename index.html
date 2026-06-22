@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=420, initial-scale=1">
+<title>Screen Clean</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-dark" id="body">
+
+  <div class="scene" aria-hidden="true">
+    <div class="scene__layer scene__waves"></div>
+    <div class="scene__layer scene__glow"></div>
+    <div class="scene__layer scene__grain"></div>
+  </div>
+
+  <div class="app">
+
+    <header class="titlebar">
+      <div class="titlebar__drag">
+        <span class="titlebar__mark">SC</span>
+        <span class="titlebar__name">Screen Clean</span>
+      </div>
+      <div class="titlebar__tools">
+        <button class="lang-trigger" id="langTrigger" type="button" aria-expanded="false" aria-controls="langPanel">
+          <span class="lang-trigger__code" id="langTriggerLabel">EN</span>
+          <span class="lang-trigger__chev" aria-hidden="true">◂</span>
+        </button>
+        <button class="icon-btn" id="themeToggle" type="button" data-i18n-title="theme_toggle" title="Переключить тему">
+          <span id="themeIcon">◐</span>
+        </button>
+        <div class="win-controls">
+          <button class="win-btn" id="minBtn" type="button" data-i18n-title="win_minimize" title="Свернуть">−</button>
+          <button class="win-btn win-btn--close" id="closeBtn" type="button" data-i18n-title="win_close" title="Скрыть в трей">×</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="lang-footnote" id="langPanel" role="listbox" aria-label="Language">
+      <button class="lang-chip lang-chip--active" type="button" data-lang="en" role="option">EN</button>
+      <button class="lang-chip" type="button" data-lang="es" role="option">ES</button>
+      <button class="lang-chip" type="button" data-lang="ja" role="option">JA</button>
+      <button class="lang-chip" type="button" data-lang="ru" role="option">RU</button>
+    </div>
+
+    <main class="app__body">
+      <p class="app__tagline" data-i18n="header_sub">Автосортировка рабочего стола</p>
+
+    <section class="hero">
+      <div class="hero__media"></div>
+      <div class="hero__glass">
+        <div class="status-pill">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Автоочистка активна</span>
+        </div>
+        <div class="hero__count" id="heroCount">—</div>
+        <div class="hero__label" data-i18n="hero_label">файлов за 24 часа</div>
+        <div class="hero__total" id="heroSub">—</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel__label" data-i18n="target_folder">Папка назначения</div>
+      <div class="field-row">
+        <input type="text" id="targetFolder" class="field" data-i18n-placeholder="target_placeholder" placeholder="Выберите папку…" />
+        <button class="btn btn-outline" id="browseBtn" type="button" data-i18n="browse">Обзор</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel__head">
+        <div class="panel__label" data-i18n="keep_on_desktop">Хранить на столе</div>
+        <div class="chip" id="delayValue">24 ч</div>
+      </div>
+      <input type="range" id="delaySlider" class="range" min="1" max="168" value="24" />
+      <div class="range-hints">
+        <span data-i18n="range_min">1 ч</span>
+        <span data-i18n="range_max">7 дней</span>
+      </div>
+    </section>
+
+    <section class="panel panel--toggles">
+      <div class="toggle-row">
+        <div class="toggle-row__text">
+          <span class="toggle-row__title" data-i18n="sort_by_type">Сортировать по типу</span>
+          <span class="toggle-row__hint" data-i18n="sort_by_type_hint">Картинки, документы, код…</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="sortByType">
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row__text">
+          <span class="toggle-row__title" data-i18n="autostart">Автозапуск</span>
+          <span class="toggle-row__hint" data-i18n="autostart_hint">Старт вместе с Windows</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="autostart">
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row__text">
+          <span class="toggle-row__title" data-i18n="auto_clean">Автоочистка</span>
+          <span class="toggle-row__hint" data-i18n="auto_clean_hint">Фоновая проверка каждую минуту</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="enabled">
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="toggle-row toggle-row--last">
+        <div class="toggle-row__text">
+          <span class="toggle-row__title" data-i18n="telemetry">Anonymous analytics</span>
+          <span class="toggle-row__hint" data-i18n="telemetry_hint">Help improve the app — no personal data</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="telemetryEnabled">
+          <span class="switch__track"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel__label" data-i18n="exclusions">Исключения</div>
+      <textarea id="exclusions" class="textarea" data-i18n-placeholder="exclusions_placeholder" placeholder="По одному имени на строку…"></textarea>
+    </section>
+
+    <footer class="dock">
+      <button class="btn btn-ghost" id="cleanNowBtn" type="button" data-i18n="clean_now">Очистить сейчас</button>
+      <button class="btn btn-accent" id="saveBtn" type="button" data-i18n="save">Сохранить</button>
+    </footer>
+
+    <div class="donate-bar">
+      <div class="donate-wrap" id="donateWrap">
+        <span class="donate-tip" id="donateTip" data-i18n="donate_title">Support the project</span>
+        <button class="donate-btn" id="donateBtn" type="button" aria-expanded="false" aria-controls="donatePanel">
+          <span class="donate-btn__mark" aria-hidden="true">$</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="donate-footnote" id="donatePanel" role="menu" aria-label="Donate">
+      <button class="donate-chip" type="button" data-wallet="btc" role="menuitem">BTC</button>
+      <button class="donate-chip" type="button" data-wallet="usdt_trc20" role="menuitem">USDT TRC20</button>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    </main>
+  </div>
+
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
