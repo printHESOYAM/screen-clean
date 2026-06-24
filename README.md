@@ -184,6 +184,12 @@ python installer/generate_assets.py
 
 ## Changelog / История версий
 
+### v3.2
+
+- In-app update banner (EN / RU / ES / JA) with download and dismiss
+- Tray balloon notification on startup and manual check from tray menu
+- GitHub Releases API check; «Update to {version}» menu item when a new release is available
+
 ### v3.1
 
 - Frameless window + title bar drag (`scDrag` bridge)

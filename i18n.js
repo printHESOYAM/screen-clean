@@ -41,6 +41,11 @@ const I18N = {
     file_one: "файл",
     file_few: "файла",
     file_many: "файлов",
+    update_badge: "Новое",
+    update_title: "Доступно обновление",
+    update_body: "Версия {version} готова · у вас {current}",
+    update_download: "Скачать",
+    update_later: "Позже",
   },
   en: {
     header_sub: "Automatic desktop sorting",
@@ -82,6 +87,11 @@ const I18N = {
     file_one: "file",
     file_few: "files",
     file_many: "files",
+    update_badge: "New",
+    update_title: "Update available",
+    update_body: "Version {version} is ready · you have {current}",
+    update_download: "Download",
+    update_later: "Later",
   },
   es: {
     header_sub: "Clasificación automática del escritorio",
@@ -123,6 +133,11 @@ const I18N = {
     file_one: "archivo",
     file_few: "archivos",
     file_many: "archivos",
+    update_badge: "Nuevo",
+    update_title: "Actualización disponible",
+    update_body: "Versión {version} lista · tienes {current}",
+    update_download: "Descargar",
+    update_later: "Después",
   },
   ja: {
     header_sub: "デスクトップの自動整理",
@@ -164,6 +179,11 @@ const I18N = {
     file_one: "件",
     file_few: "件",
     file_many: "件",
+    update_badge: "新着",
+    update_title: "アップデートがあります",
+    update_body: "バージョン {version} が利用可能 · 現在 {current}",
+    update_download: "ダウンロード",
+    update_later: "後で",
   },
 };
 

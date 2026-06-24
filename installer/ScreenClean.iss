@@ -1,6 +1,6 @@
 ; Screen Clean — styled Windows installer (Inno Setup 6+)
 
-#define AppVersion "3.1.0"
+#define AppVersion "3.2.0"
 #define AppName "Screen Clean"
 #define AppPublisher "printHESOYAM"
 #define AppURL "https://github.com/printHESOYAM/screen-clean"

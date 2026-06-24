@@ -46,6 +46,19 @@
     <main class="app__body">
       <p class="app__tagline" data-i18n="header_sub">Автосортировка рабочего стола</p>
 
+    <section class="update-banner hidden" id="updateBanner" role="region" aria-live="polite">
+      <div class="update-banner__icon" aria-hidden="true">↑</div>
+      <div class="update-banner__body">
+        <span class="update-banner__badge" id="updateBadge">New</span>
+        <div class="update-banner__title" id="updateTitle"></div>
+        <div class="update-banner__sub" id="updateSub"></div>
+      </div>
+      <div class="update-banner__actions">
+        <button class="btn btn-accent btn--compact" id="updateDownloadBtn" type="button"></button>
+        <button class="btn btn-ghost btn--compact" id="updateDismissBtn" type="button"></button>
+      </div>
+    </section>
+
     <section class="hero">
       <div class="hero__media"></div>
       <div class="hero__glass">

@@ -25,6 +25,7 @@ import webview
 import stats as stats_module
 import desktop_state as desktop_state_module
 import telemetry as telemetry_module
+import updates as updates_module
 
 APP_NAME = "ScreenClean"
 APP_VERSION = telemetry_module.APP_VERSION
@@ -284,6 +285,7 @@ DEFAULT_CONFIG = {
     "sort_by_type": True,
     "language": "en",
     "telemetry_enabled": True,
+    "update_dismissed": "",
 }
 
 UI_STRINGS = {
@@ -296,6 +298,10 @@ UI_STRINGS = {
         "moved": "Перемещено файлов: {n}",
         "move_error": "Ошибка перемещения {name}: {err}",
         "file_locked": "файл занят другой программой",
+        "check_updates": "Проверить обновления",
+        "update_menu": "⬆ Обновить до {version}",
+        "update_notify": "Доступна версия {version} · у вас {current}",
+        "update_none": "Установлена последняя версия",
     },
     "en": {
         "settings": "⚙ Settings",
@@ -306,6 +312,10 @@ UI_STRINGS = {
         "moved": "Files moved: {n}",
         "move_error": "Move error {name}: {err}",
         "file_locked": "file is in use by another program",
+        "check_updates": "Check for updates",
+        "update_menu": "⬆ Update to {version}",
+        "update_notify": "Version {version} available · you have {current}",
+        "update_none": "You're on the latest version",
     },
     "es": {
         "settings": "⚙ Ajustes",
@@ -316,6 +326,10 @@ UI_STRINGS = {
         "moved": "Archivos movidos: {n}",
         "move_error": "Error al mover {name}: {err}",
         "file_locked": "el archivo está en uso por otro programa",
+        "check_updates": "Buscar actualizaciones",
+        "update_menu": "⬆ Actualizar a {version}",
+        "update_notify": "Versión {version} disponible · tienes {current}",
+        "update_none": "Tienes la última versión",
     },
     "ja": {
         "settings": "⚙ 設定",
@@ -326,6 +340,10 @@ UI_STRINGS = {
         "moved": "移動したファイル: {n}",
         "move_error": "移動エラー {name}: {err}",
         "file_locked": "他のプログラムが使用中です",
+        "check_updates": "アップデートを確認",
+        "update_menu": "⬆ {version} に更新",
+        "update_notify": "バージョン {version} が利用可能 · 現在 {current}",
+        "update_none": "最新バージョンです",
     },
 }
 
@@ -852,9 +870,10 @@ def make_icon(active=True):
 # ─── JS API мост для pywebview ───────────────────────────────────────────
 
 class WebApi:
-    def __init__(self, get_cfg, update_cfg):
+    def __init__(self, get_cfg, update_cfg, on_update_dismissed=None):
         self._get_cfg = get_cfg
         self._update_cfg = update_cfg
+        self._on_update_dismissed = on_update_dismissed
 
     def get_config(self):
         cfg = self._get_cfg()
@@ -896,6 +915,28 @@ class WebApi:
             wallets["usdt_trc20"] = usdt
         return wallets
 
+    def check_for_updates(self):
+        cfg = self._get_cfg()
+        return updates_module.check_for_updates(
+            APP_VERSION,
+            cfg.get("update_dismissed") or "",
+        )
+
+    def dismiss_update(self, version):
+        cfg = self._get_cfg()
+        cfg["update_dismissed"] = version or ""
+        self._update_cfg(cfg)
+        if self._on_update_dismissed:
+            self._on_update_dismissed(version)
+        return {"ok": True}
+
+    def open_url(self, url):
+        import webbrowser
+
+        if url:
+            webbrowser.open(url)
+        return {"ok": True}
+
 
 # ─── main ─────────────────────────────────────────────────────────────────
 
@@ -915,14 +956,69 @@ def main():
     worker = CleanerWorker(get_cfg)
     icon_holder = {}
     window_holder = {}
+    update_holder = {"info": None}
 
     def refresh_icon():
         if "icon" in icon_holder:
             icon_holder["icon"].icon = make_icon(cfg.get("enabled", True))
             update_menu()
 
+    def _push_update_to_ui():
+        w = window_holder.get("window")
+        if not w:
+            return
+        try:
+            w.evaluate_js("window.refreshUpdateCheck && window.refreshUpdateCheck()")
+        except Exception:
+            pass
+
+    def run_update_check(notify=False):
+        def _work():
+            info = updates_module.check_for_updates(
+                APP_VERSION,
+                cfg.get("update_dismissed") or "",
+            )
+            update_holder["info"] = info
+            update_menu()
+            if info.get("available") and not info.get("dismissed"):
+                _defer_gui(_push_update_to_ui)
+            if not notify or "icon" not in icon_holder:
+                return
+            try:
+                if info.get("available") and not info.get("dismissed"):
+                    icon_holder["icon"].notify(
+                        tr("update_notify", cfg, version=info["latest"], current=info["current"]),
+                        DISPLAY_NAME,
+                    )
+                elif not info.get("available") and not info.get("error"):
+                    icon_holder["icon"].notify(tr("update_none", cfg), DISPLAY_NAME)
+            except Exception:
+                pass
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def download_update(icon=None, item=None):
+        info = update_holder.get("info") or {}
+        url = info.get("url")
+        if url:
+            import webbrowser
+            webbrowser.open(url)
+
+    def check_updates_manual(icon=None, item=None):
+        run_update_check(notify=True)
+
+    def on_update_dismissed(version):
+        info = update_holder.get("info")
+        if info:
+            update_holder["info"] = {**info, "dismissed": True}
+        update_menu()
+
     def open_settings(icon=None, item=None):
-        _defer_gui(lambda: _show_window(window_holder["window"]))
+        def show():
+            _show_window(window_holder["window"])
+            _push_update_to_ui()
+
+        _defer_gui(show)
 
     def toggle_enabled(icon=None, item=None):
         cfg["enabled"] = not cfg.get("enabled", True)
@@ -947,21 +1043,35 @@ def main():
 
     def update_menu():
         status = tr("pause" if cfg.get("enabled", True) else "start", cfg)
-        icon_holder["icon"].menu = pystray.Menu(
+        items = [
             pystray.MenuItem(tr("settings", cfg), open_settings, default=True),
             pystray.MenuItem(status, toggle_enabled),
             pystray.MenuItem(tr("clean_now", cfg), clean_now),
+        ]
+        info = update_holder.get("info") or {}
+        if info.get("available") and not info.get("dismissed"):
+            items.append(
+                pystray.MenuItem(
+                    tr("update_menu", cfg, version=info["latest"]),
+                    download_update,
+                )
+            )
+        items.append(pystray.MenuItem(tr("check_updates", cfg), check_updates_manual))
+        items.extend([
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(tr("quit", cfg), quit_app),
-        )
+        ])
+        icon_holder["icon"].menu = pystray.Menu(*items)
 
-    menu = pystray.Menu(
+    menu_items = [
         pystray.MenuItem(tr("settings", cfg), open_settings, default=True),
         pystray.MenuItem(tr("pause" if cfg.get("enabled", True) else "start", cfg), toggle_enabled),
         pystray.MenuItem(tr("clean_now", cfg), clean_now),
+        pystray.MenuItem(tr("check_updates", cfg), check_updates_manual),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(tr("quit", cfg), quit_app),
-    )
+    ]
+    menu = pystray.Menu(*menu_items)
 
     icon = pystray.Icon(APP_NAME, make_icon(cfg.get("enabled", True)), DISPLAY_NAME, menu)
     icon_holder["icon"] = icon
@@ -970,7 +1080,7 @@ def main():
 
     # ── Локальный сервер + pywebview-окно, создаём один раз, скрытым ──
     server, port = start_ui_server()
-    api = WebApi(get_cfg, update_cfg)
+    api = WebApi(get_cfg, update_cfg, on_update_dismissed=on_update_dismissed)
     window = webview.create_window(
         DISPLAY_NAME,
         url=f"http://127.0.0.1:{port}/index.html",
@@ -1001,6 +1111,12 @@ def main():
 
     # Трей — в фоновом потоке (pystray поддерживает detached-режим)
     icon.run_detached()
+
+    def _startup_update_check():
+        time.sleep(5)
+        run_update_check(notify=True)
+
+    threading.Thread(target=_startup_update_check, daemon=True).start()
 
     _patch_pywebview_drag_bridge()
 

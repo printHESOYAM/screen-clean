@@ -2,6 +2,7 @@
 
 let cfg = null;
 let donateWallets = null;
+let updateInfo = null;
 
 function showToast(msg, duration = 2400) {
   const el = document.getElementById("toast");
@@ -86,6 +87,7 @@ async function switchLanguage(lang) {
   renderStats(stats);
   await window.pywebview.api.save_config(collectConfig());
   refreshDonateLabels();
+  renderUpdateBanner();
 }
 
 function refreshDonateLabels() {
@@ -232,6 +234,64 @@ async function initDonate() {
   });
 }
 
+function renderUpdateBanner() {
+  const banner = document.getElementById("updateBanner");
+  if (!banner) return;
+
+  if (!updateInfo || !updateInfo.available || updateInfo.dismissed) {
+    banner.classList.add("hidden");
+    return;
+  }
+
+  document.getElementById("updateBadge").textContent = t("update_badge");
+  document.getElementById("updateTitle").textContent = t("update_title");
+  document.getElementById("updateSub").textContent = t("update_body", {
+    version: updateInfo.latest,
+    current: updateInfo.current,
+  });
+  document.getElementById("updateDownloadBtn").textContent = t("update_download");
+  document.getElementById("updateDismissBtn").textContent = t("update_later");
+  banner.classList.remove("hidden");
+}
+
+async function refreshUpdateCheck() {
+  try {
+    updateInfo = await window.pywebview.api.check_for_updates();
+    renderUpdateBanner();
+  } catch {
+    /* offline or API unavailable */
+  }
+}
+window.refreshUpdateCheck = refreshUpdateCheck;
+
+async function initUpdateCheck() {
+  const banner = document.getElementById("updateBanner");
+  const downloadBtn = document.getElementById("updateDownloadBtn");
+  const dismissBtn = document.getElementById("updateDismissBtn");
+  if (!banner || !downloadBtn || !dismissBtn) return;
+
+  downloadBtn.onclick = async () => {
+    if (updateInfo && updateInfo.url) {
+      await window.pywebview.api.open_url(updateInfo.url);
+    }
+  };
+
+  dismissBtn.onclick = async () => {
+    if (updateInfo && updateInfo.latest) {
+      await window.pywebview.api.dismiss_update(updateInfo.latest);
+      updateInfo.dismissed = true;
+    }
+    renderUpdateBanner();
+  };
+
+  try {
+    updateInfo = await window.pywebview.api.check_for_updates();
+    renderUpdateBanner();
+  } catch {
+    /* offline or API unavailable — skip silently */
+  }
+}
+
 async function init() {
   applyTheme(localStorage.getItem("dc_theme") || "dark");
 
@@ -244,6 +304,7 @@ async function init() {
 
   initLangPicker();
   initDonate();
+  initUpdateCheck();
 
   document.getElementById("themeToggle").onclick = () => {
     applyTheme(currentTheme() === "dark" ? "light" : "dark");

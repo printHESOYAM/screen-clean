@@ -21,6 +21,7 @@ a = Analysis(
         'stats',
         'telemetry',
         'desktop_state',
+        'updates',
     ],
     hookspath=[],
     hooksconfig={},
