@@ -56,6 +56,10 @@ The app lives in the **system tray**, starts with Windows if you want, and opens
 - System tray + background worker
 - Launch at Windows startup
 - Exclusion list (skip specific names)
+- **Frameless settings window** — custom title bar, drag to move, minimize / hide to tray
+- **Smart archive path** — remembers folder in config; if you move the archive manually, Screen Clean finds it **across all drives** by folder name + category structure; recreates on the same drive if deleted
+- **Safe paths** — normalizes broken Desktop paths (invisible space characters on Windows)
+- Scans user + Public Desktop (shortcuts on shared desktop)
 - Dark / light theme
 - Languages: **EN**, **RU**, **ES**, **JA**
 - Optional anonymous analytics (opt-out in settings)
@@ -63,10 +67,18 @@ The app lives in the **system tray**, starts with Windows if you want, and opens
 
 ### How it works
 
-1. You pick an **archive folder** (e.g. `Desktop/Archive`)
+1. You pick an **archive folder** anywhere (e.g. `D:\Archive` or `Desktop\Archive`)
 2. Files stay on the desktop for the **delay** you set
 3. After that, Screen Clean moves them — optionally into category subfolders
 4. Stats show how many files were moved in the last 24 hours
+
+### Archive folder
+
+- Path is stored in `%APPDATA%\DesktopCleaner\config.json` (`target_folder` + `archive_name`)
+- **Move archive in Explorer** → app detects new location on next clean / when opening settings (search: profile folders → same drive → all drives; skips `Windows`, `Program Files`, etc.)
+- **Pick path in settings** → works as before
+- **Delete archive** → empty folder recreated on the **same drive** as before (e.g. `D:\Archive`)
+- Use a **distinct folder name** (e.g. `ScreenClean-Archive`) if you have many folders named `Archive` on one disk
 
 ### Run from source
 
@@ -121,6 +133,10 @@ Screen Clean — лёгкая утилита для Windows, которая сл
 - Работа в трее в фоне
 - Автозапуск с Windows
 - Список исключений
+- **Окно без системной рамки** — своя шапка, перетаскивание, свернуть / в трей
+- **Умный путь архива** — запоминает папку в конфиге; если перенесли вручную, ищет **по всем дискам** по имени и структуре подпапок; при удалении создаёт заново на том же диске
+- **Безопасные пути** — исправляет битые пути Desktop (невидимые символы в имени папки)
+- Сканирует личный и общий рабочий стол (Public Desktop)
 - Тёмная / светлая тема
 - Языки: **EN**, **RU**, **ES**, **JA**
 - Анонимная аналитика (можно отключить в настройках)
@@ -128,10 +144,18 @@ Screen Clean — лёгкая утилита для Windows, которая сл
 
 ### Как это работает
 
-1. Выбираешь **папку-архив** (например `Desktop/Archive`)
+1. Выбираешь **папку-архив** где угодно (например `D:\Архив` или `Desktop\Archive`)
 2. Файлы остаются на столе заданное **время**
 3. После этого Screen Clean переносит их — при желании в подпапки по категориям
 4. В интерфейсе видно, сколько файлов перенесено за 24 часа
+
+### Папка-архив
+
+- Путь хранится в `%APPDATA%\DesktopCleaner\config.json` (`target_folder` + `archive_name`)
+- **Перенесли папку в Проводнике** → программа найдёт новое место при очистке / открытии настроек (поиск: профиль → тот же диск → все диски; пропускает `Windows`, `Program Files` и т.д.)
+- **Выбрали путь в настройках** → как раньше
+- **Удалили архив** → создастся пустая папка на **том же диске** (например `D:\Архив`)
+- Лучше **уникальное имя** папки (`ScreenClean-Archive`), если на диске много папок «Архив»
 
 ### Запуск из исходников
 
@@ -158,16 +182,31 @@ python installer/generate_assets.py
 
 ---
 
+## Changelog / История версий
+
+### v3.1
+
+- Frameless window + title bar drag (`scDrag` bridge)
+- Archive auto-discovery after manual move (all drives)
+- Path normalization for invisible Desktop folder names
+- Public Desktop scanning; PSD and more image formats
+
+### v3.0
+
+- Initial public release (Screen Clean rebrand, i18n, telemetry, installer)
+
+---
+
 ## Project structure / Структура
 
 ```
-desktop_cleaner.py   — main app (tray, logic, pywebview)
-desktop_state.py     — tracks file age on desktop
-stats.py             — move statistics
-telemetry.py         — optional anonymous analytics
+desktop_cleaner.py   — main app (tray, logic, pywebview, archive resolver)
+desktop_state.py   — tracks file age on desktop
+stats.py           — move statistics
+telemetry.py       — optional anonymous analytics
 index.html / style.css / app.js / i18n.js — settings UI
-installer/           — Inno Setup script + wizard assets
-assets/              — background images
+installer/         — Inno Setup script + wizard assets
+assets/            — background images
 ```
 
 ## Author / Автор

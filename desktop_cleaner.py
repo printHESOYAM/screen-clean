@@ -13,6 +13,7 @@ import time
 import threading
 import functools
 import http.server
+import string
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -36,10 +37,24 @@ BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))  # для PyIns
 # фоновые изображения — в assets/ (bg-waves, bg-glow, bg-leaf и др.).
 
 DESKTOP = Path.home() / "Desktop"
+_INVISIBLE_CHARS = " \u00a0\u2000-\u200b\t"
+
+
+def _is_junk_folder_name(name: str) -> bool:
+    """Папки из одних пробелов / nbsp — артефакт битого Desktop, не трогаем."""
+    return not name or all(c in _INVISIBLE_CHARS for c in name)
+
+
+def _normalize_config_path(path: str | Path) -> str:
+    """Убирает nbsp и «пустые» сегменты пути (Desktop\\ \\Архив → Desktop\\Архив)."""
+    parts = Path(str(path).replace("\u00a0", " ")).parts
+    clean = [p for p in parts if not _is_junk_folder_name(p)]
+    return str(Path(*clean)) if clean else str(path)
 
 
 def _resolve_desktop() -> Path:
     """Реальный путь к рабочему столу из реестра Windows (OneDrive, локализация)."""
+    candidates: list[Path] = []
     try:
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
@@ -47,9 +62,18 @@ def _resolve_desktop() -> Path:
         )
         path, _ = winreg.QueryValueEx(key, "Desktop")
         winreg.CloseKey(key)
-        return Path(path)
+        candidates.append(Path(path))
     except Exception:
-        return DESKTOP
+        pass
+    candidates.append(DESKTOP)
+
+    for raw in candidates:
+        p = Path(_normalize_config_path(raw))
+        if _is_junk_folder_name(p.name):
+            p = p.parent
+        if p.is_dir():
+            return p
+    return Path(_normalize_config_path(DESKTOP))
 
 
 def _desktop_paths() -> list[Path]:
@@ -238,10 +262,23 @@ def start_ui_server():
 CONFIG_PATH = Path(os.getenv("APPDATA")) / "DesktopCleaner" / "config.json"
 CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+ARCHIVE_MARKER = ".screenclean-archive.json"
+ARCHIVE_SEARCH_DEPTH = 6       # профиль: Desktop, Documents…
+ARCHIVE_DRIVE_DEPTH = 14       # весь диск, где раньше лежал архив (D:\ …)
+ARCHIVE_SYSTEM_DEPTH = 10      # остальные диски
+
+_SKIP_SEARCH_DIRS = frozenset({
+    "windows", "program files", "program files (x86)", "programdata",
+    "$recycle.bin", "system volume information", "recovery", "perflogs",
+    "winsxs", "installer", "appdata", "node_modules", ".git", ".hg",
+    ".svn", "__pycache__", "cache", "caches",
+})
+
 DEFAULT_CONFIG = {
-    "target_folder": str(Path.home() / "Desktop" / "Archive"),
+    "target_folder": "",  # заполняется в load_config через _resolve_desktop()
+    "archive_name": "",  # имя папки архива (Архив / Archive) — для поиска после ручного переноса
     "delay_hours": 24,
-    "exclusions": ["Archive"],
+    "exclusions": ["Archive", "Архив", "_desktop_files", "_desktop_space"],
     "enabled": True,
     "autostart": True,
     "sort_by_type": True,
@@ -364,20 +401,255 @@ def tr(key: str, cfg, **kwargs) -> str:
 
 # ─── Конфиг ───────────────────────────────────────────────────────────────
 
+def _sanitize_config(cfg: dict) -> dict:
+    cfg = {**DEFAULT_CONFIG, **cfg}
+    if not cfg.get("target_folder"):
+        cfg["target_folder"] = str(_resolve_desktop() / "Archive")
+    cfg["target_folder"] = _normalize_config_path(cfg["target_folder"])
+    if not cfg.get("archive_name"):
+        cfg["archive_name"] = Path(cfg["target_folder"]).name
+
+    exclusions = list(cfg.get("exclusions") or [])
+    for name in DEFAULT_CONFIG["exclusions"]:
+        if name not in exclusions:
+            exclusions.append(name)
+    cfg["exclusions"] = exclusions
+    return cfg
+
+
+@functools.lru_cache(maxsize=1)
+def _category_dir_names() -> frozenset[str]:
+    names: set[str] = set()
+    for labels in CATEGORY_LABELS.values():
+        names.update(labels.values())
+    return frozenset(names)
+
+
+def _archive_fingerprint_score(folder: Path) -> int:
+    """Насколько папка похожа на архив Screen Clean (подпапки категорий и т.д.)."""
+    if not folder.is_dir():
+        return 0
+    score = 0
+    try:
+        subdirs = [p.name for p in folder.iterdir() if p.is_dir()]
+    except Exception:
+        return 0
+    known = _category_dir_names()
+    score += sum(2 for name in subdirs if name in known)
+    if (folder / ARCHIVE_MARKER).is_file():
+        score += 1
+    return score
+
+
+def _should_skip_search_dir(name: str) -> bool:
+    return name.casefold() in _SKIP_SEARCH_DIRS or name.startswith("$")
+
+
+def _all_drives() -> list[Path]:
+    drives: list[Path] = []
+    for letter in string.ascii_uppercase:
+        drive = Path(f"{letter}:/")
+        try:
+            if drive.exists():
+                drives.append(drive)
+        except OSError:
+            continue
+    return drives
+
+
+def _archive_search_plan(old_path: Path) -> list[tuple[Path, int]]:
+    """Где и как глубоко искать: сначала быстро, потом весь диск, потом система."""
+    plan: list[tuple[Path, int]] = []
+    seen: set[str] = set()
+
+    def add(raw: Path | str | None, depth: int) -> None:
+        if not raw:
+            return
+        try:
+            p = Path(_normalize_config_path(raw))
+            if not p.exists():
+                return
+            key = str(p.resolve()) if p.is_dir() else str(p)
+            if key in seen:
+                return
+            seen.add(key)
+            plan.append((p, depth))
+        except Exception:
+            pass
+
+    for root in _archive_search_roots(old_path):
+        add(root, ARCHIVE_SEARCH_DEPTH)
+
+    if old_path.drive:
+        add(Path(old_path.drive + "\\"), ARCHIVE_DRIVE_DEPTH)
+
+    for drive in _all_drives():
+        add(drive, ARCHIVE_SYSTEM_DEPTH)
+
+    return plan
+
+
+def _archive_search_roots(old_path: Path) -> list[Path]:
+    home = Path.home()
+    candidates = [
+        old_path.parent,
+        _resolve_desktop(),
+        home / "Desktop",
+        home / "Documents",
+        home / "Downloads",
+        home / "OneDrive",
+    ]
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for raw in candidates:
+        try:
+            p = Path(_normalize_config_path(raw))
+            if not p.is_dir():
+                continue
+            key = str(p.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            roots.append(p)
+        except Exception:
+            continue
+    return roots
+
+
+def _pick_better_archive(
+    candidate: Path,
+    score: int,
+    best: Path | None,
+    best_score: int,
+    old_path: Path,
+) -> tuple[Path | None, int]:
+    if score <= 0:
+        return best, best_score
+    if score > best_score:
+        return candidate, score
+    if score == best_score and best is not None:
+        old_drive = (old_path.drive or "").upper()
+        if candidate.drive.upper() == old_drive and best.drive.upper() != old_drive:
+            return candidate, score
+    return best, best_score
+
+
+def _scan_root_for_archive(
+    archive_name: str,
+    root: Path,
+    max_depth: int,
+    old_path: Path,
+    best: Path | None,
+    best_score: int,
+) -> tuple[Path | None, int]:
+    name_lower = archive_name.casefold()
+    root = Path(root)
+
+    for dirpath, dirnames, _filenames in os.walk(root, topdown=True):
+        dirnames[:] = [d for d in dirnames if not _should_skip_search_dir(d)]
+
+        try:
+            rel_depth = len(Path(dirpath).relative_to(root).parts)
+        except ValueError:
+            rel_depth = 0
+        if rel_depth > max_depth:
+            dirnames.clear()
+            continue
+
+        for dname in dirnames:
+            if dname.casefold() != name_lower:
+                continue
+            folder = Path(dirpath) / dname
+            score = _archive_fingerprint_score(folder) or 1
+            best, best_score = _pick_better_archive(folder, score, best, best_score, old_path)
+            if best_score >= 6:
+                return best, best_score
+
+    return best, best_score
+
+
+def _find_relocated_archive(archive_name: str, old_path: Path) -> Path | None:
+    """Ищем папку по имени + структуре по всей системе (все диски)."""
+    if not archive_name:
+        return None
+
+    best: Path | None = None
+    best_score = 0
+
+    for root, depth in _archive_search_plan(old_path):
+        best, best_score = _scan_root_for_archive(
+            archive_name, root, depth, old_path, best, best_score
+        )
+        if best_score >= 6:
+            return best
+
+    return best
+
+
+def _default_archive_path(archive_name: str, hint: Path | None = None) -> Path:
+    """Если архив удалили — воссоздаём на том же диске (D:\\Архив), иначе на Desktop."""
+    name = archive_name or "Archive"
+    if hint is not None and hint.drive:
+        try:
+            drive_root = Path(hint.drive + "\\")
+            if drive_root.exists():
+                if hint.parent.exists() and hint.parent != drive_root:
+                    return hint.parent / name
+                return drive_root / name
+        except Exception:
+            pass
+    return _resolve_desktop() / name
+
+
+def resolve_archive_folder(cfg: dict, *, persist: bool = False) -> Path:
+    """
+    Путь архива хранится в config.json (APPDATA) — главный источник правды.
+    Перенесли вручную — ищем по archive_name на всех дисках.
+    Удалили — воссоздаём на том же диске / рядом со старым путём.
+    """
+    merged = _sanitize_config({**cfg})
+    archive_name = merged["archive_name"]
+    target = Path(merged["target_folder"])
+
+    if target.is_dir():
+        merged["archive_name"] = target.name
+    else:
+        found = _find_relocated_archive(archive_name, target)
+        if found:
+            merged["target_folder"] = _normalize_config_path(found)
+            merged["archive_name"] = found.name
+            target = found
+        else:
+            target = _default_archive_path(archive_name, target)
+            merged["target_folder"] = _normalize_config_path(target)
+            merged["archive_recreated"] = True
+
+    target.mkdir(parents=True, exist_ok=True)
+    cfg.clear()
+    cfg.update(merged)
+    if persist:
+        save_config(cfg)
+    return target
+
+
 def load_config():
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-            for k, v in DEFAULT_CONFIG.items():
-                cfg.setdefault(k, v)
+                cfg = _sanitize_config(json.load(f))
+            resolve_archive_folder(cfg, persist=True)
             return cfg
         except Exception:
             pass
-    return DEFAULT_CONFIG.copy()
+    cfg = _sanitize_config({})
+    resolve_archive_folder(cfg, persist=True)
+    return cfg
 
 
 def save_config(cfg):
+    cfg = _sanitize_config(cfg)
+    cfg["archive_name"] = Path(cfg["target_folder"]).name
+    cfg.pop("archive_recreated", None)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
@@ -428,6 +700,8 @@ def _item_key(item: Path) -> str:
 
 
 def _should_skip_item(item: Path, target: Path, exclusions: set) -> bool:
+    if _is_junk_folder_name(item.name):
+        return True
     name_lower = item.name.lower()
     if item.name in exclusions:
         return True
@@ -501,7 +775,7 @@ def get_all_files_to_move(cfg):
 # ─── Перенос ──────────────────────────────────────────────────────────────
 
 def do_clean(cfg, force=False):
-    base_target = Path(cfg["target_folder"])
+    base_target = resolve_archive_folder(cfg, persist=True)
     base_target.mkdir(parents=True, exist_ok=True)
     moved = 0
     sort_by_type = cfg.get("sort_by_type", True)
@@ -583,7 +857,9 @@ class WebApi:
         self._update_cfg = update_cfg
 
     def get_config(self):
-        return self._get_cfg()
+        cfg = self._get_cfg()
+        resolve_archive_folder(cfg, persist=True)
+        return cfg
 
     def save_config(self, new_cfg):
         self._update_cfg(new_cfg)

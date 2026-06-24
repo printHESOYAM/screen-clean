@@ -29,7 +29,7 @@ from pathlib import Path
 # Set via environment variables — see .env.example. Never commit real keys.
 TELEMETRY_ENDPOINT = os.getenv("SCREENCLEAN_TELEMETRY_URL", "")
 TELEMETRY_API_KEY = os.getenv("SCREENCLEAN_TELEMETRY_KEY", "")
-APP_VERSION = "3.0"
+APP_VERSION = "3.1"
 
 TELEMETRY_PATH = Path(os.getenv("APPDATA")) / "DesktopCleaner" / "telemetry.json"
 TELEMETRY_PATH.parent.mkdir(parents=True, exist_ok=True)
